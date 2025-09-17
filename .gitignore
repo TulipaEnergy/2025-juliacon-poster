@@ -1,0 +1,5 @@
+*.json
+.vscode
+Manifest.toml
+__pycache__
+timings.csv
