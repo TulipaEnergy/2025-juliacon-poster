@@ -407,7 +407,7 @@ function plot_timings()
     end
 end
 
-# timeroutput_comparison()
-# timings()
+timeroutput_comparison()
+timings()
 Plots.default(titlefont=22, legendfontsize=10, guidefont=(16, "Times New Roman"), tickfontsize=10)
 plot_timings()
