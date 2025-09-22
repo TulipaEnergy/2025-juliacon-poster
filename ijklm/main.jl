@@ -69,8 +69,8 @@ struct DuckDBData
     I::Vector{String}
     to::TimerOutput
 
-    function DuckDBData(n::Int)
-        duckdb_db = joinpath(@__DIR__, "local-db.duckdb")
+    function DuckDBData(n::Int, dbfilename=nothing)
+        duckdb_db = isnothing(dbfilename) ? ":memory:" : joinpath(@__DIR__, "local-db.duckdb")
         isfile(duckdb_db) && rm(duckdb_db)
         con = DBInterface.connect(DuckDB.DB, duckdb_db)
         to = TimerOutput()
@@ -98,29 +98,29 @@ end
 
 function duckdb_formulation(data::DuckDBData)
     @timeit data.to "Data manipulation" begin
-        ijklm = @timeit data.to "Query ijklm" DuckDB.query(
+        @timeit data.to "Query ijklm" DuckDB.query(
             data.con,
-            "CREATE OR REPLACE TEMP SEQUENCE id START 1
-            ;
-            CREATE OR REPLACE TEMP TABLE var_x AS
+            "CREATE OR REPLACE TEMP SEQUENCE id START 1;
+            CREATE OR REPLACE TABLE var_x AS
             SELECT
-              nextval('id') AS id,
-              t_ijk.i, t_ijk.j, t_ijk.k, t_jkl.l, t_klm.m
+                nextval('id') AS id,
+                t_ijk.i, t_ijk.j, t_ijk.k, t_jkl.l, t_klm.m
             FROM t_ijk
             INNER JOIN t_jkl
-              ON   t_ijk.j = t_jkl.j
-              AND t_ijk.k = t_jkl.k
+                ON  t_ijk.j = t_jkl.j
+                AND t_ijk.k = t_jkl.k
             INNER JOIN t_klm
-              ON  t_jkl.k = t_klm.k
-              AND t_jkl.l = t_klm.l
-            ;
-            FROM var_x
+                ON  t_jkl.k = t_klm.k
+                AND t_jkl.l = t_klm.l
             ;",
         )
-        grouped_ijklm_over_i = @timeit data.to "Group ijklm over i" DuckDB.query(
+        @timeit data.to "Group ijklm over i" DuckDB.query(
             data.con,
-            "SELECT
-              ARRAY_AGG(var_x.id) AS var_x_indices,
+            "CREATE OR REPLACE TEMP SEQUENCE id START 1;
+            CREATE OR REPLACE TABLE cons AS
+            SELECT
+                nextval('id') AS id,
+                ARRAY_AGG(var_x.id) AS var_x_indices,
             FROM var_x
             GROUP BY var_x.i
             ;",
@@ -130,23 +130,30 @@ function duckdb_formulation(data::DuckDBData)
     model = Model(HiGHS.Optimizer)
     set_silent(model)
     @timeit data.to "Create x" begin
-        # x = [@variable(
-        #   model,
-        #   # base_name = "x[$i,$j,$k,$l,$m]",
-        #   lower_bound = 0.0
-        # ) for row in ijklm]
+        # x = model[:x] = [
+        #     @variable(
+        #         model,
+        #         # base_name = "x[...]",
+        #         lower_bound = 0.0
+        #     ) for row in DuckDB.query(data.con, "FROM var_x")
+        # ]
+        # Cheaper version because we don't need anything from the rows
         num_vars = only(only(DuckDB.query(data.con, "SELECT COUNT(*) FROM var_x")))
         x = @variable(model, x[1:num_vars] >= 0)
     end
     @timeit data.to "Create constraints" begin
-        for row in grouped_ijklm_over_i
-            var_x_indices = row.var_x_indices::Vector{Union{Missing,Int}}
-            x_expr = AffExpr(0.0)
-            for id::Int in var_x_indices
-                add_to_expression!(x_expr, x[id])
-            end
-            @constraint(model, x_expr in MOI.GreaterThan(0.0))
-        end
+        # for row in DuckDB.query(data.con, "FROM cons")
+        #     var_x_indices = row.var_x_indices::Vector{Union{Missing,Int}}
+        #     x_expr = AffExpr(0.0)
+        #     for id::Int in var_x_indices
+        #         add_to_expression!(x_expr, x[id])
+        #     end
+        #     @constraint(model, x_expr in MOI.GreaterThan(0.0))
+        # end
+        model[:cons] = [
+            @constraint(model, sum(x[id::Int] for id in row.var_x_indices::Vector{Union{Missing,Int}}) >= 0)
+            for row in DuckDB.query(data.con, "FROM cons")
+        ]
     end
     # @timeit data.to "Solve model" optimize!(model)
     return model
@@ -200,7 +207,7 @@ function compare_timer_outputs(to1::TimerOutput, to2::TimerOutput)
 end
 
 function timeroutput_comparison()
-    N = 10000
+    N = 100000
     m = 3
     @info "Running TimerOutput comparison with N=$N for $m+1 repetitions"
 
@@ -263,7 +270,7 @@ function timings(; num_samples=10, num_repetitions=10)
             push!(time_dataframe, stats.time / num_repetitions)
             push!(memory_dataframe, stats.bytes / num_repetitions / 1e6) # Convert to MB
             push!(gc_time_dataframe, stats.gctime / num_repetitions)
-            push!(compile_time_dataframe, stats.time - stats.gctime) # Approximate compile time
+            push!(compile_time_dataframe, stats.compile_time / num_repetitions)
 
             # Measure DuckDB performance
             stats = @timed for _ in 1:num_repetitions
@@ -272,7 +279,7 @@ function timings(; num_samples=10, num_repetitions=10)
             push!(time_duckdb, stats.time / num_repetitions)
             push!(memory_duckdb, stats.bytes / num_repetitions / 1e6) # Convert to MB
             push!(gc_time_duckdb, stats.gctime / num_repetitions)
-            push!(compile_time_duckdb, stats.time - stats.gctime) # Approximate compile time
+            push!(compile_time_duckdb, stats.compile_time / num_repetitions)
         end
     end
 
@@ -313,7 +320,7 @@ function plot_timings()
             ) |> sort
 
         plt_args = (
-            xlabel="|I|",
+            xlabel="|I| (log scale)",
             xaxis=:log,
             c=[:red :blue],
             m=([:circle :square], stroke(1), [:pink :lightblue]),
@@ -325,7 +332,7 @@ function plot_timings()
             df_agg.N,
             [df_agg.dataframe_time df_agg.duckdb_time];
             labels=hcat("DataFrame", "DuckDB"),
-            ylabel="Time (s)",
+            ylabel="Time (s) (log scale)",
             yaxis=:log,
             title="Model Creation Time ($agg)",
             plt_args...
@@ -335,7 +342,7 @@ function plot_timings()
             df_agg.N,
             [df_agg.dataframe_memory df_agg.duckdb_memory];
             labels=hcat("DataFrame", "DuckDB"),
-            ylabel="(MB)",
+            ylabel="(MB) (log scale)",
             yaxis=:log,
             title="Memory Allocations ($agg)",
             plt_args...,

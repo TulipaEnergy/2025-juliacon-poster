@@ -17,7 +17,7 @@ np.random.seed(123)
 
 s7 = 2.65  # close to sqrt(7) so that s7 ** (n % 3) = [1, 3, 7]
 
-N = [round(s7 ** (n % 3)) * 10 ** (n // 3) for n in range(3, 19)]
+N = [round(s7 ** (n % 3)) * 10 ** (n // 3) for n in range(9, 19)]
 N = [n for n in N if n <= max_cardinality_of_i]
 
 J, K, L, M, JLK, KLM = data.create_fixed_data(m=cardinality_of_j)
