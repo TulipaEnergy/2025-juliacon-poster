@@ -351,8 +351,9 @@ function plot_timings()
         plt_gc = plot(
             df_agg.N,
             [df_agg.dataframe_gc_time df_agg.duckdb_gc_time];
+            yaxis=:log,
             labels=hcat("DataFrame", "DuckDB"),
-            ylabel="GC Time (s)",
+            ylabel="GC Time (s) (log scale)",
             title="Garbage Collection Time ($agg)",
             plt_args...,
         )
@@ -409,12 +410,15 @@ function plot_timings()
         png(joinpath(path_prefix, "ijklm-$agg-time"))
         plot(plt_memory, size=figsize)
         png(joinpath(path_prefix, "ijklm-$agg-memory"))
+        plot(plt_gc, size=figsize)
+        png(joinpath(path_prefix, "ijklm-$agg-gctime"))
+
         plot(plt_time, plt_memory, plt_gc, plt_compile; layout=(2, 2), size=figsize)
         png(joinpath(path_prefix, "ijklm-$agg-full-comparison"))
     end
 end
 
-timeroutput_comparison()
-timings()
+# timeroutput_comparison()
+# timings()
 Plots.default(titlefont=22, legendfontsize=10, guidefont=(16, "Times New Roman"), tickfontsize=10)
 plot_timings()
