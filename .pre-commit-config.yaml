@@ -1,0 +1,25 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-json
+      - id: check-toml
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: file-contents-sorter
+        files: .JuliaFormatter.toml
+        args: [--unique]
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: pretty-format-json
+        args: [--autofix, --indent=2]
+      - id: trailing-whitespace
+      - id: check-merge-conflict
+        args: [--assume-in-merge]
+  - repo: https://github.com/domluna/JuliaFormatter.jl
+    rev: v2.3.0
+    hooks:
+      - id: julia-formatter
+        name: Julia Formatter
+        entry: julia -e 'using JuliaFormatter; format(".")'
+        language: system

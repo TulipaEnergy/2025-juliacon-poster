@@ -33,7 +33,7 @@ struct DataFrameData
 
     function DataFrameData(n::Int)
         return new(
-            ["i$i" for i in 1:n],
+            ["i$i" for i = 1:n],
             parsefile_dataframe(joinpath(data_dir, "data_IJK_$n.json"), (:i, :j, :k)),
             parsefile_dataframe(joinpath(data_dir, "data_JKL.json"), (:j, :k, :l)),
             parsefile_dataframe(joinpath(data_dir, "data_KLM.json"), (:k, :l, :m)),
@@ -45,9 +45,9 @@ end
 function dataframe_formulation(data::DataFrameData)
     @timeit data.to "Data manipulation" begin
         ijklm = @timeit data.to "Innerjoin" DataFrames.innerjoin(
-            DataFrames.innerjoin(data.IJK, data.JKL; on=[:j, :k]),
+            DataFrames.innerjoin(data.IJK, data.JKL; on = [:j, :k]),
             data.KLM;
-            on=[:k, :l],
+            on = [:k, :l],
         )
     end
     model = Model(HiGHS.Optimizer)
@@ -69,7 +69,7 @@ struct DuckDBData
     I::Vector{String}
     to::TimerOutput
 
-    function DuckDBData(n::Int, dbfilename=nothing)
+    function DuckDBData(n::Int, dbfilename = nothing)
         duckdb_db = isnothing(dbfilename) ? ":memory:" : joinpath(@__DIR__, "local-db.duckdb")
         isfile(duckdb_db) && rm(duckdb_db)
         con = DBInterface.connect(DuckDB.DB, duckdb_db)
@@ -91,7 +91,7 @@ struct DuckDBData
                     ;",
                 )
             end
-            return new(con, ["i$i" for i in 1:n], to)
+            return new(con, ["i$i" for i = 1:n], to)
         end
     end
 end
@@ -151,8 +151,10 @@ function duckdb_formulation(data::DuckDBData)
         #     @constraint(model, x_expr in MOI.GreaterThan(0.0))
         # end
         model[:cons] = [
-            @constraint(model, sum(x[id::Int] for id in row.var_x_indices::Vector{Union{Missing,Int}}) >= 0)
-            for row in DuckDB.query(data.con, "FROM cons")
+            @constraint(
+                model,
+                sum(x[id::Int] for id in row.var_x_indices::Vector{Union{Missing,Int}}) >= 0
+            ) for row in DuckDB.query(data.con, "FROM cons")
         ]
     end
     # @timeit data.to "Solve model" optimize!(model)
@@ -214,24 +216,24 @@ function timeroutput_comparison()
     dataframe_data = DataFrameData(N)
     dataframe_formulation(dataframe_data)
     reset_timer!(dataframe_data.to)
-    for _ in 1:m
+    for _ = 1:m
         dataframe_formulation(dataframe_data)
     end
 
     duckdb_data = DuckDBData(N)
     duckdb_formulation(duckdb_data)
     reset_timer!(duckdb_data.to)
-    for _ in 1:m
+    for _ = 1:m
         duckdb_formulation(duckdb_data)
     end
 
     @show dataframe_data.to
     @show duckdb_data.to
 
-    compare_timer_outputs(dataframe_data.to, duckdb_data.to)
+    return compare_timer_outputs(dataframe_data.to, duckdb_data.to)
 end
 
-function timings(; num_samples=10, num_repetitions=10)
+function timings(; num_samples = 10, num_repetitions = 10)
     N = Int[]
     time_dataframe = Float64[]
     time_duckdb = Float64[]
@@ -260,11 +262,11 @@ function timings(; num_samples=10, num_repetitions=10)
         dataframe_formulation(dataframe_data)
         duckdb_formulation(duckdb_data)
 
-        for _ in 1:num_samples
+        for _ = 1:num_samples
             push!(N, n)
 
             # Measure DataFrame performance
-            stats = @timed for _ in 1:num_repetitions
+            stats = @timed for _ = 1:num_repetitions
                 dataframe_formulation(dataframe_data)
             end
             push!(time_dataframe, stats.time / num_repetitions)
@@ -273,7 +275,7 @@ function timings(; num_samples=10, num_repetitions=10)
             push!(compile_time_dataframe, stats.compile_time / num_repetitions)
 
             # Measure DuckDB performance
-            stats = @timed for _ in 1:num_repetitions
+            stats = @timed for _ = 1:num_repetitions
                 duckdb_formulation(duckdb_data)
             end
             push!(time_duckdb, stats.time / num_repetitions)
@@ -284,17 +286,17 @@ function timings(; num_samples=10, num_repetitions=10)
     end
 
     df = DataFrame(;
-        N=N,
-        dataframe_time=time_dataframe,
-        duckdb_time=time_duckdb,
-        dataframe_memory=memory_dataframe,
-        duckdb_memory=memory_duckdb,
-        dataframe_gc_time=gc_time_dataframe,
-        duckdb_gc_time=gc_time_duckdb,
-        dataframe_compile_time=compile_time_dataframe,
-        duckdb_compile_time=compile_time_duckdb,
+        N = N,
+        dataframe_time = time_dataframe,
+        duckdb_time = time_duckdb,
+        dataframe_memory = memory_dataframe,
+        duckdb_memory = memory_duckdb,
+        dataframe_gc_time = gc_time_dataframe,
+        duckdb_gc_time = gc_time_duckdb,
+        dataframe_compile_time = compile_time_dataframe,
+        duckdb_compile_time = compile_time_duckdb,
     )
-    CSV.write(joinpath(@__DIR__, "timings.csv"), df)
+    return CSV.write(joinpath(@__DIR__, "timings.csv"), df)
 end
 
 function plot_timings()
@@ -320,50 +322,50 @@ function plot_timings()
             ) |> sort
 
         plt_args = (
-            xlabel="|I| (log scale)",
-            xaxis=:log,
-            c=[:red :blue],
-            m=([:circle :square], stroke(1), [:pink :lightblue]),
-            xticks=10 .^ (1:floor(Int, log10(N))),
-            background=nothing,
+            xlabel = "|I| (log scale)",
+            xaxis = :log,
+            c = [:red :blue],
+            m = ([:circle :square], stroke(1), [:pink :lightblue]),
+            xticks = 10 .^ (1:floor(Int, log10(N))),
+            background = nothing,
         )
 
         plt_time = plot(
             df_agg.N,
             [df_agg.dataframe_time df_agg.duckdb_time];
-            labels=hcat("DataFrame", "DuckDB"),
-            ylabel="Time (s) (log scale)",
-            yaxis=:log,
-            title="Model Creation Time ($agg)",
-            plt_args...
+            labels = hcat("DataFrame", "DuckDB"),
+            ylabel = "Time (s) (log scale)",
+            yaxis = :log,
+            title = "Model Creation Time ($agg)",
+            plt_args...,
         )
 
         plt_memory = plot(
             df_agg.N,
             [df_agg.dataframe_memory df_agg.duckdb_memory];
-            labels=hcat("DataFrame", "DuckDB"),
-            ylabel="(MB) (log scale)",
-            yaxis=:log,
-            title="Memory Allocations ($agg)",
+            labels = hcat("DataFrame", "DuckDB"),
+            ylabel = "(MB) (log scale)",
+            yaxis = :log,
+            title = "Memory Allocations ($agg)",
             plt_args...,
         )
 
         plt_gc = plot(
             df_agg.N,
             [df_agg.dataframe_gc_time df_agg.duckdb_gc_time];
-            yaxis=:log,
-            labels=hcat("DataFrame", "DuckDB"),
-            ylabel="GC Time (s) (log scale)",
-            title="Garbage Collection Time ($agg)",
+            yaxis = :log,
+            labels = hcat("DataFrame", "DuckDB"),
+            ylabel = "GC Time (s) (log scale)",
+            title = "Garbage Collection Time ($agg)",
             plt_args...,
         )
 
         plt_compile = plot(
             df_agg.N,
             [df_agg.dataframe_compile_time df_agg.duckdb_compile_time];
-            labels=hcat("DataFrame", "DuckDB"),
-            ylabel="Compilation Time (s)",
-            title="Compilation Time ($agg)",
+            labels = hcat("DataFrame", "DuckDB"),
+            ylabel = "Compilation Time (s)",
+            title = "Compilation Time ($agg)",
             plt_args...,
         )
 
@@ -371,54 +373,59 @@ function plot_timings()
             plt_time,
             df.N,
             [df.dataframe_time df.duckdb_time];
-            lab="",
-            c=[:pink :lightblue],
-            opacity=0.5,
-            m=[:circle :square],
+            lab = "",
+            c = [:pink :lightblue],
+            opacity = 0.5,
+            m = [:circle :square],
         )
         scatter!(
             plt_memory,
             df.N,
             [df.dataframe_memory df.duckdb_memory];
-            lab="",
-            c=[:pink :lightblue],
-            opacity=0.5,
-            m=[:circle :square],
+            lab = "",
+            c = [:pink :lightblue],
+            opacity = 0.5,
+            m = [:circle :square],
         )
         scatter!(
             plt_gc,
             df.N,
             [df.dataframe_gc_time df.duckdb_gc_time];
-            lab="",
-            c=[:pink :lightblue],
-            opacity=0.5,
-            m=[:circle :square],
+            lab = "",
+            c = [:pink :lightblue],
+            opacity = 0.5,
+            m = [:circle :square],
         )
         scatter!(
             plt_compile,
             df.N,
             [df.dataframe_compile_time df.duckdb_compile_time];
-            lab="",
-            c=[:pink :lightblue],
-            opacity=0.5,
-            m=[:circle :square],
+            lab = "",
+            c = [:pink :lightblue],
+            opacity = 0.5,
+            m = [:circle :square],
         )
         figsize = (800, 600)
         path_prefix = joinpath(@__DIR__, "..", "images")
         isdir(path_prefix) || mkdir(path_prefix)
-        plot(plt_time, size=figsize)
+        plot(plt_time; size = figsize)
         png(joinpath(path_prefix, "ijklm-$agg-time"))
-        plot(plt_memory, size=figsize)
+        plot(plt_memory; size = figsize)
         png(joinpath(path_prefix, "ijklm-$agg-memory"))
-        plot(plt_gc, size=figsize)
+        plot(plt_gc; size = figsize)
         png(joinpath(path_prefix, "ijklm-$agg-gctime"))
 
-        plot(plt_time, plt_memory, plt_gc, plt_compile; layout=(2, 2), size=figsize)
+        plot(plt_time, plt_memory, plt_gc, plt_compile; layout = (2, 2), size = figsize)
         png(joinpath(path_prefix, "ijklm-$agg-full-comparison"))
     end
 end
 
 # timeroutput_comparison()
 # timings()
-Plots.default(titlefont=22, legendfontsize=10, guidefont=(16, "Times New Roman"), tickfontsize=10)
+Plots.default(;
+    titlefont = 22,
+    legendfontsize = 10,
+    guidefont = (16, "Times New Roman"),
+    tickfontsize = 10,
+)
 plot_timings()
